@@ -1,4 +1,3 @@
-# AWS provider information
 provider "aws" {
   region = "us-east-1"  
 }
@@ -14,12 +13,16 @@ resource "aws_vpc" "myvpc" {
 
 resource "aws_subnet" "sub1" {
   vpc_id                  = aws_vpc.myvpc.id
-  cidr_block              = "10.0.0.0/24"
+  cidr_block              = "10.0.1.0/24"
   availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
 }
-
-
+resource "aws_subnet" "sub2" {
+  vpc_id                  = aws_vpc.myvpc.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+}
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.myvpc.id
 }
@@ -38,3 +41,39 @@ resource "aws_route_table_association" "rta1" {
   route_table_id = aws_route_table.RT.id
 }
 
+# Allocate Elastic IP for NAT Gateway
+resource "aws_eip" "nat" {
+  
+  tags = {
+    Name = "nat-eip"
+  }
+}
+
+# NAT Gateway in Public Subnet (10.0.2.0/24)
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.sub2.id
+
+  tags = {
+    Name = "nat-gateway"
+  }
+
+  # Ensure Internet Gateway exists first
+  depends_on = [aws_internet_gateway.igw]
+}
+
+# Route Table for Private Subnet(s)
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.myvpc.id
+
+  tags = {
+    Name = "myvpc-private-rt"
+  }
+}
+
+# Route: Send all outbound traffic through NAT Gateway
+resource "aws_route" "private_nat_gateway" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.nat.id
+}
